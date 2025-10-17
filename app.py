@@ -1,4 +1,5 @@
-from ast import Return
+
+# app.py (complete, session-based auth, role-based access control)
 from functools import wraps
 import os
 from datetime import datetime
@@ -6,9 +7,8 @@ from collections import defaultdict
 
 from dotenv import load_dotenv
 from flask import (
-    Flask, jsonify, render_template, request, redirect, url_for, session, flash
+    Flask, render_template, request, redirect, url_for, session, flash
 )
-from flask_login import current_user
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 import logging
@@ -37,8 +37,8 @@ bcrypt = Bcrypt(app)
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(100), unique=True, nullable=False)
-    password = db.Column(db.String(100), nullable=False)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(30), nullable=False)  # 'Supplier', 'Intermediate', 'End User'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -89,15 +89,7 @@ class Returned(db.Model):
         return f"<Return {self.id} dispatch:{self.dispatch_id} x{self.flc_qty}>"
 
 # --- Components list (example). Replace/fetch from DB when ready ---
-
-class Component(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(500), unique=True, nullable=False)
-    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
-    created_at = db.Column(db.DateTime, default=datetime.now)
-
-
-# COMPONENTS = ["Oil Pan", "Engine Block", "Gearbox", "Suspension Kit", "Brake Assembly"]
+COMPONENTS = ["Oil Pan", "Engine Block", "Gearbox", "Suspension Kit", "Brake Assembly"]
 
 # ---------- AUTH / ROLE DECORATORS ----------
 def login_required(f):
@@ -178,108 +170,39 @@ def logout():
     return redirect(url_for("login"))
 
 # ------------------- DASHBOARD -------------------
-# @app.route('/dashboard')
-# @login_required
-# def dashboard():
-#     role = session.get('role')
-#     username = session.get('username')
-
-#     if role == 'Supplier':
-#         # Supplier: Dispatches sent to B + Returns received (to Supplier)
-#         sent_dispatches = DispatchData.query.filter_by(from_role='Supplier').order_by(DispatchData.date_time.desc()).all()
-#         received_returns = Returned.query.filter_by(to_user_id=session.get("user_id")).order_by(Returned.date_time.desc()).all()
-#         return render_template(
-#             'dashboard.html',
-#             role=role,
-#             sent_dispatches=sent_dispatches,
-#             received_returns=received_returns
-#         )
-
-#     elif role == 'Intermediate':
-#         # Intermediate: Receives from A + Sends to C
-#         received_dispatches = DispatchData.query.filter_by(to_role='Intermediate').order_by(DispatchData.date_time.desc()).all()
-#         sent_dispatches = DispatchData.query.filter_by(from_role='Intermediate').order_by(DispatchData.date_time.desc()).all()
-#         return render_template(
-#             'dashboard.html',
-#             role=role,
-#             received_dispatches=received_dispatches,
-#             sent_dispatches=sent_dispatches
-#         )
-
-#     else:
-#         flash("Invalid role session. Please log in again.", "danger")
-#         return redirect(url_for('logout'))
-
-
-# @app.route('/dashboard')
-# @login_required
-# def dashboard():
-#     user = User.query.get(session['user_id'])
-#     user_role = user.role
-
-#     # Fetch dispatches and returns based on role
-#     if user_role == 'supplier':
-#         dispatches = DispatchData.query.filter_by(from_user_id=user.id).all()
-#         returns = Returned.query.filter_by(to_user_id=user.id).all()
-#     elif user_role == 'intermediate':
-#         dispatches = DispatchData.query.filter_by(from_user_id=user.id).all()
-#         returns = Returned.query.filter_by(to_user_id=user.id).all()
-#     else:  # end user
-#         dispatches = DispatchData.query.filter_by(to_user_id=user.id).all()
-#         returns = Returned.query.filter_by(from_user_id=user.id).all()
-
-#     # Stats summary
-#     stats = {
-#         "total_dispatches": len(dispatches),
-#         "pending_returns": len([d for d in dispatches if d.status == "Pending"]),
-#         "received": len([d for d in dispatches if d.status == "Received"]),
-#         "returned": len([d for d in dispatches if d.status == "Returned"])
-#     }
-
-#     return render_template("dashboard.html",
-#                            user=user,
-#                            user_role=user_role,
-#                            dispatches=dispatches,
-#                            returns=returns,
-#                            stats=stats)
-
-
 @app.route('/dashboard')
 @login_required
 def dashboard():
     role = session.get('role')
-    user_id = session.get('user_id')
-
-    # Stats common structure
-    def build_stats(dispatches):
-        return {
-            "total_dispatches": len(dispatches),
-            "pending": len([d for d in dispatches if d.status == "Pending"]),
-            "received": len([d for d in dispatches if d.status == "Received"]),
-            "returned": len([d for d in dispatches if d.status == "Returned"])
-        }
+    username = session.get('username')
 
     if role == 'Supplier':
-        sent_dispatches = DispatchData.query.filter_by(from_user_id=user_id).order_by(DispatchData.date_time.desc()).all()
-        received_returns = Returned.query.filter_by(to_user_id=user_id).order_by(Returned.date_time.desc()).all()
-        stats = build_stats(sent_dispatches)
-        return render_template("dashboard.html", role=role, sent_dispatches=sent_dispatches,
-                               received_returns=received_returns, stats=stats)
+        # Supplier: Dispatches sent to B + Returns received (to Supplier)
+        sent_dispatches = DispatchData.query.filter_by(from_role='Supplier').order_by(DispatchData.date_time.desc()).all()
+        received_returns = Returned.query.filter_by(to_user_id=session.get("user_id")).order_by(Returned.date_time.desc()).all()
+        return render_template(
+            'dashboard.html',
+            role=role,
+            sent_dispatches=sent_dispatches,
+            received_returns=received_returns
+        )
 
     elif role == 'Intermediate':
-        received_dispatches = DispatchData.query.filter_by(to_user_id=user_id).order_by(DispatchData.date_time.desc()).all()
-        sent_dispatches = DispatchData.query.filter_by(from_user_id=user_id).order_by(DispatchData.date_time.desc()).all()
-        stats = build_stats(sent_dispatches)
-        return render_template("dashboard.html", role=role, received_dispatches=received_dispatches,
-                               sent_dispatches=sent_dispatches, stats=stats)
+        # Intermediate: Receives from A + Sends to C
+        received_dispatches = DispatchData.query.filter_by(to_role='Intermediate').order_by(DispatchData.date_time.desc()).all()
+        sent_dispatches = DispatchData.query.filter_by(from_role='Intermediate').order_by(DispatchData.date_time.desc()).all()
+        return render_template(
+            'dashboard.html',
+            role=role,
+            received_dispatches=received_dispatches,
+            sent_dispatches=sent_dispatches
+        )
 
     else:
         flash("Invalid role session. Please log in again.", "danger")
-        return redirect(url_for("logout"))
+        return redirect(url_for('logout'))
 
-
-
-
+# ------------------- DISPATCH CREATE -------------------
 # @app.route('/dispatch_create', methods=['GET', 'POST'])
 # @login_required
 # @role_required('Supplier', 'Intermediate')
@@ -414,7 +337,6 @@ def dashboard():
 #                     error = f"Cannot dispatch {flc_qty} FLCs — only {available} empties available from parent dispatch {parent.id}."
 #                     return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
 
-#                 # ✅ Mark dispatch to End User as Delivered directly
 #                 new_dispatch = DispatchData(
 #                     from_user_id=current_user_id,
 #                     to_user_id=to_user_id,
@@ -425,14 +347,14 @@ def dashboard():
 #                     component=component,
 #                     flc_qty=flc_qty,
 #                     component_qty=component_qty,
-#                     status="Out for Delivery",  # CHANGED from Pending → Out for Delivery
+#                     status="Pending",
 #                     remarks=remarks,
 #                     date_time=datetime.utcnow()
 #                 )
 #                 try:
 #                     db.session.add(new_dispatch)
 #                     db.session.commit()
-#                     flash(f"Filled dispatch created to End User (ID: {new_dispatch.id}) and marked as Delivered.", "success")
+#                     flash(f"Filled dispatch created to End User (ID: {new_dispatch.id})", "success")
 #                     return redirect(url_for("dispatch_create"))
 #                 except Exception as e:
 #                     db.session.rollback()
@@ -452,103 +374,175 @@ def dashboard():
 
 
 
-
-
 @app.route('/dispatch_create', methods=['GET', 'POST'])
 @login_required
+@role_required('Supplier', 'Intermediate')
 def dispatch_create():
-    user_id = session['user_id']
-    user = User.query.get(user_id)
-    role = user.role
+    current_user_id = session["user_id"]
+    current_user = User.query.get(current_user_id)
+    if not current_user:
+        flash("Invalid session user. Please login again.", "danger")
+        return redirect(url_for("logout"))
 
-    # Fetch common data
-    components = Component.query.order_by(Component.name.asc()).all()
+    role = current_user.role
+    error = None
+    receiver_candidates = []
+    end_users = []
+    parent_dispatches = []
 
-    if request.method == 'POST':
-        if role == 'Supplier':
-            to_user_id = int(request.form['to_user'])
-            component = request.form['component']
-            flc_qty = int(request.form['flc_qty'])
-            component_qty = int(request.form['component_qty'])
-            remarks = request.form.get('remarks', '')
+    # If Supplier: list Intermediate users to send empties to.
+    # If Intermediate: list potential End Users + list of A->B empty dispatches received (as parents).
+    if role == "Supplier":
+        receiver_candidates = User.query.filter_by(role="Intermediate").order_by(User.username).all()
+    elif role == "Intermediate":
+        end_users = User.query.filter_by(role="End User").order_by(User.username).all()
+        # Candidate parent A->B empty dispatches that are Received and still have empties available
+        empties = DispatchData.query.filter_by(to_user_id=current_user_id, dispatch_type="empty", status="Received").all()
+        for d in empties:
+            consumed = db.session.query(db.func.coalesce(db.func.sum(DispatchData.flc_qty), 0)).filter(DispatchData.parent_dispatch_id == d.id).scalar() or 0
+            available = d.flc_qty - consumed
+            if available > 0:
+                parent_dispatches.append((d, available))
 
-            new_dispatch = DispatchData(
-                from_user_id=user.id,
-                to_user_id=to_user_id,
-                from_role='Supplier',
-                to_role='Intermediate',
-                component=component,
-                flc_qty=flc_qty,
-                component_qty=component_qty,
-                remarks=remarks,
-                status='Pending',
-                date_time=datetime.now()
-            )
-            db.session.add(new_dispatch)
-            db.session.commit()
-            flash('Dispatch created successfully (A → B)', 'success')
-            return redirect(url_for('dashboard'))
+    if request.method == "POST":
+        app.logger.debug("Dispatch create form data: %s", dict(request.form))
+        try:
+            component = request.form.get("component", "").strip()
+            flc_qty = int(request.form.get("flc_qty", "0"))
+            component_qty = int(request.form.get("component_qty", "0"))
+            remarks = request.form.get("remarks", "").strip()
+        except ValueError:
+            error = "Quantities must be integers."
 
-        elif role == 'Intermediate':
-            parent_dispatch_id = int(request.form['parent_dispatch_id'])
-            to_user_id = request.form.get('to_user')
-            component = request.form['component']
-            flc_qty = int(request.form['flc_qty'])
-            component_qty = int(request.form['component_qty'])
-            remarks = request.form.get('remarks', '')
+        if not error and (not component or flc_qty <= 0 or component_qty <= 0):
+            error = "Please provide component and positive quantities."
 
-            # Automatically mark delivery to C as Delivered
-            new_dispatch = DispatchData(
-                from_user_id=user.id,
-                to_user_id=to_user_id if to_user_id else None,
-                from_role='Intermediate',
-                to_role='End User',
-                component=component,
-                flc_qty=flc_qty,
-                component_qty=component_qty,
-                remarks=remarks,
-                status='Delivered',
-                date_time=datetime.now()
-            )
+        if not error:
+            if role == "Supplier":
+                try:
+                    to_user_id = int(request.form.get("to_user_id"))
+                except Exception:
+                    error = "Select a valid Intermediate to send empties to."
+                    return render_template("dispatch_create.html", role=role, receiver_candidates=receiver_candidates, error=error)
 
-            # Update supplier dispatch as completed
-            supplier_dispatch = DispatchData.query.get(parent_dispatch_id)
-            if supplier_dispatch:
-                supplier_dispatch.status = 'Processed by Intermediate'
-                db.session.commit()
+                to_user = User.query.get(to_user_id)
+                if not to_user or to_user.role != "Intermediate":
+                    error = "Selected receiver is not an Intermediate user."
+                    return render_template("dispatch_create.html", role=role, receiver_candidates=receiver_candidates, error=error)
 
-            db.session.add(new_dispatch)
-            db.session.commit()
-            flash('Dispatch created successfully (B → C - Delivered)', 'success')
-            return redirect(url_for('dashboard'))
+                new_dispatch = DispatchData(
+                    from_user_id=current_user_id,
+                    to_user_id=to_user_id,
+                    dispatch_type="empty",
+                    parent_dispatch_id=None,
+                    from_role=current_user.role,
+                    to_role=to_user.role,
+                    component=component,
+                    flc_qty=flc_qty,
+                    component_qty=component_qty,
+                    status="Pending",
+                    remarks=remarks,
+                    date_time=datetime.utcnow()
+                )
+                try:
+                    db.session.add(new_dispatch)
+                    db.session.commit()
+                    flash(f"Empty dispatch created (ID: {new_dispatch.id})", "success")
+                    return redirect(url_for("dispatch_create"))
+                except Exception as e:
+                    db.session.rollback()
+                    app.logger.exception("Failed to create supplier dispatch")
+                    error = f"DB error: {e}"
 
-    # GET method — load create page
-    if role == 'Supplier':
-        to_users = User.query.filter_by(role='Intermediate').all()
-        return render_template('dispatch_create.html', role=role, to_users=to_users, components=components)
+            elif role == "Intermediate":
+                parent_id_raw = request.form.get("parent_dispatch_id", "").strip()
+                to_user_raw = request.form.get("to_user_id", "").strip()  # can be existing user id or 'other'
 
-    elif role == 'Intermediate':
-        to_users = User.query.filter_by(role='End User').all()
-        received_from_supplier = DispatchData.query.filter_by(
-            to_user_id=user_id,
-            to_role='Intermediate',
-            status='Received'
-        ).all()
+                if to_user_raw == "other":
+                    end_user_name = request.form.get("end_user_name", "").strip()
+                    if not end_user_name:
+                        error = "Please enter End User name when selecting Other."
+                        return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
+                    to_user = User.query.filter_by(username=end_user_name, role="End User").first()
+                    if not to_user:
+                        dummy_pw = bcrypt.generate_password_hash(os.urandom(16)).decode("utf-8")
+                        try:
+                            to_user = User(username=end_user_name, password=dummy_pw, role="End User")
+                            db.session.add(to_user)
+                            db.session.commit()
+                        except Exception as e:
+                            db.session.rollback()
+                            app.logger.exception("Failed to create End User")
+                            error = f"Failed to create End User: {e}"
+                            return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
+                    to_user_id = to_user.id
+                else:
+                    try:
+                        to_user_id = int(to_user_raw)
+                    except Exception:
+                        error = "Select a valid End User."
+                        return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
+                    to_user = User.query.get(to_user_id)
+                    if not to_user or to_user.role != "End User":
+                        error = "Selected receiver must be an End User."
+                        return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
 
-        return render_template(
-            'dispatch_create.html',
-            role=role,
-            to_users=to_users,
-            received_from_supplier=received_from_supplier,
-            components=components
-        )
+                if not parent_id_raw:
+                    error = "Select which empty dispatch (A→B) batch you are consuming."
+                    return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
 
+                try:
+                    parent_id = int(parent_id_raw)
+                except Exception:
+                    error = "Invalid parent dispatch selected."
+                    return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
+
+                parent = DispatchData.query.get(parent_id)
+                if not parent or parent.to_user_id != current_user_id or parent.dispatch_type != "empty" or parent.status != "Received":
+                    error = "Selected parent dispatch is not valid (must be an A→B empty dispatch received by you)."
+                    return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
+
+                consumed_on_parent = db.session.query(db.func.coalesce(db.func.sum(DispatchData.flc_qty), 0)).filter(DispatchData.parent_dispatch_id == parent.id).scalar() or 0
+                available = parent.flc_qty - consumed_on_parent
+                if flc_qty > available:
+                    error = f"Cannot dispatch {flc_qty} FLCs — only {available} empties available from parent dispatch {parent.id}."
+                    return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
+
+                # ✅ Mark dispatch to End User as Delivered directly
+                new_dispatch = DispatchData(
+                    from_user_id=current_user_id,
+                    to_user_id=to_user_id,
+                    dispatch_type="filled",
+                    parent_dispatch_id=parent.id,
+                    from_role=current_user.role,
+                    to_role=to_user.role,
+                    component=component,
+                    flc_qty=flc_qty,
+                    component_qty=component_qty,
+                    status="Delivered",  # CHANGED from Pending → Delivered
+                    remarks=remarks,
+                    date_time=datetime.utcnow()
+                )
+                try:
+                    db.session.add(new_dispatch)
+                    db.session.commit()
+                    flash(f"Filled dispatch created to End User (ID: {new_dispatch.id}) and marked as Delivered.", "success")
+                    return redirect(url_for("dispatch_create"))
+                except Exception as e:
+                    db.session.rollback()
+                    app.logger.exception("Failed to create filled dispatch")
+                    error = f"DB error: {e}"
+            else:
+                error = "Your role cannot create dispatches here."
+
+    # Render form depending on role
+    if role == "Supplier":
+        return render_template("dispatch_create.html", role=role, receiver_candidates=receiver_candidates, error=error)
+    elif role == "Intermediate":
+        return render_template("dispatch_create.html", role=role, end_users=end_users, parent_dispatches=parent_dispatches, error=error)
     else:
-        flash('Only Supplier or Intermediate can create dispatches.', 'danger')
-        return redirect(url_for('dashboard'))
-
-
-
+        flash("You don't have permissions to create dispatches.", "warning")
+        return redirect(url_for("dashboard"))
 
 
 # ------------------- RECEIVE -------------------
@@ -655,71 +649,40 @@ def returns():
     all_returns = Returned.query.order_by(Returned.date_time.desc()).all()
     return render_template('returns.html', dispatches=dispatches, returns=all_returns)
 
-
-
-
-@app.route('/add_end_user', methods=['GET', 'POST'])
-@login_required
-def add_end_user():
-    if current_user.role != 'Intermediate':
-        flash("Access denied.", "danger")
-        return redirect(url_for('dashboard'))
-
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        if not username:
-            flash("End User name is required.", "warning")
-            return redirect(url_for('add_end_user'))
-
-        existing = User.query.filter_by(username=username).first()
-        if existing:
-            flash("This End User already exists.", "warning")
-            return redirect(url_for('add_end_user'))
-
-        new_user = User(username=username, role='EndUser')
-        db.session.add(new_user)
-        db.session.commit()
-        flash(f"End User '{username}' created successfully!", "success")
-        return redirect(url_for('dashboard'))
-
-    return render_template('add_end_user.html')
-
-
-
-
-
-
-@app.route('/components', methods=['GET', 'POST'])
-@login_required
-def manage_components():
-    user_id = session['user_id']
-    user = User.query.get(user_id)
-    if user.role != 'Supplier':
-        flash('Access denied: Only suppliers can manage components.', 'danger')
-        return redirect(url_for('dashboard'))
-
-    if request.method == 'POST':
-        comp_name = request.form['component_name'].strip()
-        if not comp_name:
-            flash('Component name cannot be empty.', 'danger')
-            return redirect(url_for('manage_components'))
-
-        existing = Component.query.filter_by(name=comp_name).first()
-        if existing:
-            flash('Component already exists.', 'warning')
-        else:
-            new_comp = Component(name=comp_name, created_by=user.id)
-            db.session.add(new_comp)
-            db.session.commit()
-            flash('Component added successfully.', 'success')
-
-        return redirect(url_for('manage_components'))
-
-    components = Component.query.order_by(Component.name.asc()).all()
-    return render_template('components.html', components=components)
-
-
 # ------------------- REPORTS -------------------
+# @app.route("/reports")
+# @login_required
+# def reports():
+#     cycle_report = DispatchData.query.order_by(DispatchData.id.desc()).all()
+#     component_data = defaultdict(lambda: {"flc_qty": 0, "component_qty": 0})
+#     for d in DispatchData.query.all():
+#         component_data[d.component]["flc_qty"] += d.flc_qty
+#         component_data[d.component]["component_qty"] += d.component_qty
+
+#     received_dispatches = DispatchData.query.filter_by(status="Received").all()
+#     returned_dispatch_ids = {r.dispatch_id for r in Returned.query.all()}
+#     pending_returns = [d for d in received_dispatches if d.id not in returned_returns_ids()] if False else None
+
+#     # (Simpler: pending returns are received dispatches whose id is not present in Returned.dispatch_id)
+#     returned_dispatch_ids = {r.dispatch_id for r in Returned.query.all()}
+#     pending_returns = [d for d in received_dispatches if d.id not in returned_dispatch_ids]
+
+#     remarks_list = []
+#     for d in DispatchData.query.filter(DispatchData.remarks != None).all():
+#         if d.remarks and d.remarks.strip():
+#             remarks_list.append({"id": d.id, "type": "Dispatch", "remarks": d.remarks})
+#     for r in Returned.query.filter(Returned.remarks != None).all():
+#         if r.remarks and r.remarks.strip():
+#             remarks_list.append({"id": r.id, "type": "Return", "remarks": r.remarks})
+
+#     return render_template("reports.html",
+#                            cycle_report=cycle_report,
+#                            component_report=component_data,
+#                            pending_returns=pending_returns,
+#                            remarks=remarks_list)
+
+
+# ---------- Replace your existing /reports route with this ----------
 @app.route("/reports")
 @login_required
 def reports():
@@ -856,8 +819,6 @@ def reports():
         remarks=remarks_list,
         role=role
     )
-
-
 
 
 
